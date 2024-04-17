@@ -7,11 +7,26 @@ import (
 
  log "broadcast/pkg/logging"
  "github.com/vmihailenco/msgpack/v5"
+ "github.com/pterm/pterm"
 )
 
 type Msg struct {
     Tag string
     Text string
+}
+
+var (
+  duration int
+  progress_title string
+  old_progress_title string
+  responses map[string]bool
+)
+
+func init() {
+  duration = 3
+  progress_title = ""
+  old_progress_title = ""
+  responses = make(map[string]bool)
 }
 
 func Broadcast(tag string) {
@@ -33,7 +48,26 @@ func Broadcast(tag string) {
   defer pc.Close()
 
   done := make(chan bool)
-  timeout := time.After(3 * time.Second)
+  timeout := time.After(time.Duration(duration) * time.Second)
+
+  go func() {
+    pb, _ := pterm.DefaultProgressbar.WithTotal(duration * 10 - 1).WithTitle("Waiting for response").Start("Progress")
+
+    for i := 1; i <= duration * 10; i++ {
+      pb.Increment()
+
+      if (progress_title != old_progress_title) {
+        old_progress_title = progress_title
+        responses[progress_title] = true
+
+        pterm.Success.Println(progress_title)
+      }
+
+      time.Sleep(time.Second / 10)
+    }
+
+    pb.Stop()
+  }()
 
   go sendBroadcast(tag, addr, pc, pc2, done)
 
@@ -77,6 +111,11 @@ func sendBroadcast(tag string, addr net.Addr, pc net.PacketConn, pc2 net.PacketC
     panic(err)
   }
 
-  fmt.Println(fmt.Sprintf("%s replied: %s #%s", addr2, msg.Text, msg.Tag))
+  title := fmt.Sprintf("%s replied: %s #%s", addr2, msg.Text, msg.Tag)
+  _, ok := responses[title]
+  if !ok {
+    progress_title = title
+  }
+
   done <- true
 }
